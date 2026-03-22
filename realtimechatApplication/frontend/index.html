@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Akamai Test Client</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+        #chat-section { display: none; }
+        #messages { border: 1px solid #ccc; height: 300px; overflow-y: scroll; padding: 10px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <h2>WebSocket Test Client</h2>
+
+    <div id="connect-section">
+        <input type="text" id="username" placeholder="Enter Username">
+        <button onclick="connect()">Connect to Server</button>
+    </div>
+
+    <div id="chat-section">
+        <div id="messages"></div>
+        <input type="text" id="message-input" placeholder="Type a message...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let username = null;
+
+        function connect() {
+            username = document.getElementById('username').value.trim();
+            if(username) {
+                // 1. Point exactly to your Spring Boot @Endpoint
+                let socket = new SockJS('http://localhost:8080/ws');
+                stompClient = Stomp.over(socket);
+
+                // 2. Initiate the Handshake
+                stompClient.connect({}, function (frame) {
+                    console.log('Connected: ' + frame);
+                    
+                    // Update UI
+                    document.getElementById('connect-section').style.display = 'none';
+                    document.getElementById('chat-section').style.display = 'block';
+
+                    // 3. Subscribe to the public topic
+                    stompClient.subscribe('/topic/public', function (messageOutput) {
+                        showMessage(JSON.parse(messageOutput.body));
+                    });
+
+                    // 4. Send the JOIN alert
+                    stompClient.send("/app/chat.addUser", {}, JSON.stringify({sender: username, type: 'JOIN'}));
+                });
+            }
+        }
+
+        function sendMessage() {
+            let messageContent = document.getElementById('message-input').value.trim();
+            if(messageContent && stompClient) {
+                let chatMessage = {
+                    sender: username,
+                    content: messageContent,
+                    type: 'CHAT'
+                };
+                
+                // 5. Publish to your Spring Boot @MessageMapping
+                stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
+                document.getElementById('message-input').value = '';
+            }
+        }
+
+        function showMessage(message) {
+            let messageArea = document.getElementById('messages');
+            let messageElement = document.createElement('div');
+            
+            if (message.type === 'JOIN') {
+                messageElement.innerHTML = `<em>${message.sender} joined the network.</em>`;
+            } else {
+                messageElement.innerHTML = `<strong>${message.sender}:</strong> ${message.content}`;
+            }
+            
+            messageArea.appendChild(messageElement);
+            messageArea.scrollTop = messageArea.scrollHeight; // Auto-scroll to bottom
+        }
+    </script>
+</body>
+</html>
